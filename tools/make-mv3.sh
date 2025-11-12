@@ -5,7 +5,7 @@
 set -e
 shopt -s extglob
 
-echo "*** uBOLite.mv3: Creating extension"
+echo "*** AdNauseamLite.mv3: Creating extension"
 
 PLATFORM="chromium"
 
@@ -59,18 +59,18 @@ mkdir -p "$UBOL_DIR"/css/fonts
 mkdir -p "$UBOL_DIR"/js
 mkdir -p "$UBOL_DIR"/img
 
-if [ -n "$UBO_VERSION" ]; then
-    UBO_REPO="https://github.com/gorhill/uBlock.git"
-    UBO_DIR=$(mktemp -d)
-    echo "*** uBOLite.mv3: Fetching uBO $UBO_VERSION from $UBO_REPO into $UBO_DIR"
-    cd "$UBO_DIR"
+if [ -n "$ADN_VERSION" ]; then
+    ADN_REPO="https://github.com/dhowe/AdNauseam.git"
+    ADN_DIR=$(mktemp -d)
+    echo "*** AdNauseamLite.mv3: Fetching uBO $ADN_VERSION from $ADN_REPO into $ADN_DIR"
+    cd "$ADN_DIR"
     git init -q
-    git remote add origin "https://github.com/gorhill/uBlock.git"
-    git fetch --depth 1 origin "$UBO_VERSION"
+    git remote add origin "https://github.com/dhowe/AdNauseam.git"
+    git fetch --depth 1 origin "$ADN_VERSION"
     git checkout -q FETCH_HEAD
     cd - > /dev/null
 else
-    UBO_DIR=.
+    ADN_DIR=.
 fi
 
 echo "*** uBOLite.mv3: Copying common files"

@@ -33,6 +33,10 @@ import './tab.js';
 import './ublock.js';
 import './utils.js';
 
+// ADN imports
+import adnauseam from './adn/core.js'
+import { ubolog } from './console.js';
+
 import {
     permanentFirewall,
     permanentSwitches,
@@ -50,7 +54,6 @@ import { redirectEngine } from './redirect-engine.js';
 import staticExtFilteringEngine from './static-ext-filtering.js';
 import { staticFilteringReverseLookup } from './reverselookup.js';
 import staticNetFilteringEngine from './static-net-filtering.js';
-import { ubolog } from './console.js';
 import webRequest from './traffic.js';
 import µb from './background.js';
 
@@ -70,6 +73,7 @@ vAPI.app.onShutdown = ( ) => {
     permanentFirewall.reset();
     sessionURLFiltering.reset();
     permanentURLFiltering.reset();
+    adnauseam.shutdown(); // ADN
     sessionSwitches.reset();
     permanentSwitches.reset();
 };
@@ -207,6 +211,32 @@ const onNetWhitelistReady = (netWhitelistRaw, adminExtra) => {
     µb.netWhitelistModifyTime = Date.now();
 };
 
+
+
+/******************************************************************************/
+//                           Adn Strict Block List                            //
+/******************************************************************************/
+
+const onNetStrictBlockListReady = function(netStrictBlockListRaw, adminExtra) {
+    if ( typeof netStrictBlockListRaw === 'string' ) {
+        netStrictBlockListRaw = netStrictBlockListRaw.split('\n');
+    }
+    // Append admin-controlled trusted-site directives
+    if (
+        adminExtra instanceof Object &&
+        Array.isArray(adminExtra.untrustedSiteDirectives)
+    ) {
+        for ( const directive of adminExtra.trustedSiteDirectives ) {
+            µb.netStrictBlockListDefault.push(directive);
+            netStrictBlockListRaw.push(directive);
+        }
+    }
+    µb.netStrictBlockList = µb.strictBlockListFromArray(netStrictBlockListRaw);
+    µb.netStrictBlockListModifyTime = Date.now();
+};
+
+
+
 /******************************************************************************/
 
 // User settings are in memory
@@ -252,7 +282,12 @@ const onUserSettingsReady = fetched => {
             'webrtcIPAddress': !µb.userSettings.webrtcIPAddressHidden
         });
     }
-
+    // https://github.com/gorhill/uBlock/issues/1892
+    // For first installation on a battery-powered device, disable generic
+    // cosmetic filtering.
+    if (false && µb.userSettings.firstInstall && vAPI.battery ) { // ADN: we need these
+        userSettings.ignoreGenericCosmeticFilters = true;
+    }
     // https://github.com/uBlockOrigin/uBlock-issues/issues/1513
     if (
         vAPI.net.canUncloakCnames &&
@@ -333,6 +368,9 @@ const onFirstFetchReady = (fetched, adminExtra) => {
         fetched = createDefaultProps();
     }
 
+    // ADN
+    µb.userSettings.firstInstall = (fetched.version === '0.0.0.0');
+
     // Order is important -- do not change:
     fromFetch(µb.restoreBackupSettings, fetched);
 
@@ -344,6 +382,9 @@ const onFirstFetchReady = (fetched, adminExtra) => {
     sessionSwitches.assign(permanentSwitches);
 
     onNetWhitelistReady(fetched.netWhitelist, adminExtra);
+    // Adn strict block list
+    onNetStrictBlockListReady(fetched.netStrictBlockList, adminExtra);
+    // end of adn
 };
 
 /******************************************************************************/
@@ -369,6 +410,7 @@ const createDefaultProps = ( ) => {
         'urlFilteringString': '',
         'hostnameSwitchesString': µb.hostnameSwitchesDefault.join('\n'),
         'netWhitelist': µb.netWhitelistDefault,
+        'netStrictBlockList': µb.netStrictBlockListDefault, // ADN - strictBlockList
         'version': '0.0.0.0'
     };
     toFetch(µb.restoreBackupSettings, fetchableProps);
@@ -479,6 +521,12 @@ webRequest.start();
 // Force an update of the context menu according to the currently
 // active tab.
 contextMenu.update();
+
+// ADN lists and first run (see #1826)
+adnauseam.onListsLoaded(µb.userSettings.firstInstall
+  && µb.restoreBackupSettings.lastRestoreFile === "");
+µb.userSettings.firstInstall = false;
+µb.saveUserSettings();
 
 // https://github.com/uBlockOrigin/uBlock-issues/issues/717
 //   Prevent the extension from being restarted mid-session.

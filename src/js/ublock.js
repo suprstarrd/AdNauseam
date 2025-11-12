@@ -19,6 +19,14 @@
     Home: https://github.com/gorhill/uBlock
 */
 
+'use strict';
+
+/******************************************************************************/
+
+import io from './assets.js';
+import µb from './background.js';
+import adnauseam from './adn/core.js'
+import dnt from './adn/dnt.js';
 import {
     broadcast,
     filteringBehaviorChanged,
@@ -34,12 +42,16 @@ import {
     sessionURLFiltering,
 } from './filtering-engines.js';
 
+import {
+    ShowAdsDebug,
+    BlockingDisabled,
+    ClickingDisabled,
+    HidingDisabled
+} from './adn/notifications.js';
 import contextMenu from './contextmenu.js';
 import cosmeticFilteringEngine from './cosmetic-filtering.js';
 import { hostnameFromURI } from './uri-utils.js';
-import io from './assets.js';
 import { redirectEngine } from './redirect-engine.js';
-import µb from './background.js';
 
 /******************************************************************************/
 /******************************************************************************/
@@ -299,6 +311,155 @@ const matchBucket = function(url, hostname, bucket, start) {
 µb.reWhitelistHostnameExtractor = /([a-z0-9.\-_[\]]+)(?::[\d*]+)?\/(?:[^\x00-\x20/]|$)[^\x00-\x20]*$/;
 
 /******************************************************************************/
+// ADN - Strict Block List
+// Copy from whitelist helper functions
+/******************************************************************************/
+
+µb.getIsPageStrictBlocked = function(url) {
+    const hostname = hostnameFromURI(url);
+    let key = hostname;
+    for (;;) {
+        if ( matchBucket(url, hostname, this.netStrictBlockList.get(key)) !== -1 ) {
+            return true;
+        }
+        const pos = key.indexOf('.');
+        if ( pos === -1 ) { break; }
+        key = key.slice(pos + 1);
+    }
+    if ( matchBucket(url, hostname, this.netStrictBlockList.get('//')) !== -1 ) {
+        return true;
+    }
+    return false;
+};
+
+µb.arrayFromStrictBlockList = µb.arrayFromWhitelist;
+µb.stringFromStrictBlockList =  µb.stringFromWhitelist;
+µb.strictBlockListFromArray = µb.whitelistFromArray;
+µb.strictBlockListFromString = µb.whitelistFromString;
+
+
+µb.toggleStrictBlock = function(url, scope, newState) {
+    // check if page was already strictBlocked
+    const currentState = this.getIsPageStrictBlocked(url);
+    if ( newState === undefined ) {
+        newState = !currentState;
+    }
+    if ( newState === currentState ) {
+        return currentState;
+    }
+
+    const netStrictBlockList = this.netStrictBlockList;
+    const pos = url.indexOf('#');
+    let targetURL = pos !== -1 ? url.slice(0, pos) : url;
+    const targetHostname = hostnameFromURI(targetURL);
+    let key = targetHostname;
+    let directive = scope === 'page' ? targetURL : targetHostname;
+
+    // Add to directive strictBlockList and remove from whitelist
+    if ( newState === true ) {
+        let bucket = this.netStrictBlockList.get(key);
+        if ( bucket === undefined ) {
+            bucket = [];
+            netStrictBlockList.set(key, bucket);
+        }
+        bucket.push(directive);
+        this.saveStrictBlockList();
+        // this.removePageFromWhitelist(this.netWhitelist, targetURL, targetHostname)
+        return true;
+    }
+
+    // remove from StrictBlockList
+    this.removePageFromStrictBlockList(netStrictBlockList, targetURL, targetHostname)
+};
+
+// Remove all directives which cause current URL to be whitelisted
+µb.removePageFromWhitelist = function (netWhitelist, targetURL, targetHostname) {
+    let key = targetHostname;
+    for (;;) {
+        const bucket = netWhitelist.get(key);
+        if ( bucket !== undefined ) {
+            let i;
+            for (;;) {
+                i = matchBucket(targetURL, targetHostname, bucket, i);
+                if ( i === -1 ) { break; }
+                directive = bucket.splice(i, 1)[0];
+                if ( isHandcraftedWhitelistDirective(directive) ) {
+                    netWhitelist.get('#').push(`# ${directive}`);3
+                }
+            }
+            if ( bucket.length === 0 ) {
+                netWhitelist.delete(key);
+            }
+        }
+        const pos = key.indexOf('.');
+        if ( pos === -1 ) { break; }
+        key = key.slice(pos + 1);
+    }
+    const bucket = netWhitelist.get('//');
+    if ( bucket !== undefined ) {
+        let i;
+        for (;;) {
+            i = matchBucket(targetURL, targetHostname, bucket, i);
+            if ( i === -1 ) { break; }
+            directive = bucket.splice(i, 1)[0];
+            if ( isHandcraftedWhitelistDirective(directive) ) {
+                netWhitelist.get('#').push(`# ${directive}`);
+            }
+        }
+        if ( bucket.length === 0 ) {
+            netWhitelist.delete('//');
+        }
+    }
+    this.saveWhitelist();
+}
+
+
+// Remove all directives which cause current URL to be whitelisted
+µb.removePageFromStrictBlockList = function (netStrictBlockList, targetURL, targetHostname) {
+    let directive = targetHostname;
+    let key = targetHostname;
+    for (;;) {
+        const bucket = netStrictBlockList.get(key);
+        if ( bucket !== undefined ) {
+            let i;
+            for (;;) {
+                i = matchBucket(targetURL, targetHostname, bucket, i);
+                if ( i === -1 ) { break; }
+                directive = bucket.splice(i, 1)[0];
+                if ( isHandcraftedWhitelistDirective(directive) ) {
+                    netStrictBlockList.get('#').push(`# ${directive}`);3
+                }
+            }
+            if ( bucket.length === 0 ) {
+                netStrictBlockList.delete(key);
+            }
+        }
+        const pos = key.indexOf('.');
+        if ( pos === -1 ) { break; }
+        key = key.slice(pos + 1);
+    }
+    const bucket = netStrictBlockList.get('//');
+    if ( bucket !== undefined ) {
+        let i;
+        for (;;) {
+            i = matchBucket(targetURL, targetHostname, bucket, i);
+            if ( i === -1 ) { break; }
+            directive = bucket.splice(i, 1)[0];
+            if ( isHandcraftedWhitelistDirective(directive) ) {
+                netStrictBlockList.get('#').push(`# ${directive}`);
+            }
+        }
+        if ( bucket.length === 0 ) {
+            netStrictBlockList.delete('//');
+        }
+    }
+    this.saveStrictBlockList();
+}
+
+/******************************************************************************/
+// End of Adn StrictBlockList
+/******************************************************************************/
+
 
 µb.changeUserSettings = function(name, value) {
     let us = this.userSettings;
@@ -311,6 +472,8 @@ const matchBucket = function(url, hostname, bucket, start) {
         us.noRemoteFonts = sessionSwitches.evaluate('no-remote-fonts', '*') === 1;
         us.noScripting = sessionSwitches.evaluate('no-scripting', '*') === 1;
         us.noCSPReports = sessionSwitches.evaluate('no-csp-reports', '*') === 1;
+        us.appName = vAPI.app.name; // ADN
+        us.appVersion = vAPI.app.version; // ADN
         return us;
     }
 
@@ -322,14 +485,14 @@ const matchBucket = function(url, hostname, bucket, start) {
 
     // Pre-change
     switch ( name ) {
-    case 'largeMediaSize':
-        if ( typeof value !== 'number' ) {
-            value = parseInt(value, 10) || 0;
-        }
-        value = Math.ceil(Math.max(value, 0));
-        break;
-    default:
-        break;
+      case 'largeMediaSize':
+          if ( typeof value !== 'number' ) {
+              value = parseInt(value, 10) || 0;
+          }
+          value = Math.ceil(Math.max(value, 0));
+          break;
+      default:
+          break;
     }
 
     // Change -- but only if the user setting actually exists.
@@ -404,6 +567,38 @@ const matchBucket = function(url, hostname, bucket, start) {
             vAPI.browserSettings.set({ 'webrtcIPAddress': !value });
         }
         break;
+
+    /***************************** ADN *******************************/
+
+    case 'showIconBadge':
+        adnauseam.updateBadges();
+        break;
+    case 'parseTextAds':
+        adnauseam.updateBadges();
+        break;
+    case 'hidingAds':
+        adnauseam.verifySetting(HidingDisabled, !us.hidingAds);
+        dnt.updateFilters();
+        break;
+    case 'clickingAds':
+        adnauseam.verifySetting(ClickingDisabled, !us.clickingAds);
+        dnt.updateFilters();
+        break;
+    case 'blockingMalware':
+        adnauseam.verifySetting(BlockingDisabled, !us.blockingMalware);
+        break;
+    case 'disableHidingForDNT':
+      dnt.updateFilters();
+      break;
+    case 'disableClickingForDNT':
+      dnt.updateFilters();
+      break;
+    case 'noThirdPartyCookies': // WHY IS THIS HERE ?
+        //vAPI.browserSettings.set({ 'thirdPartyCookiesAllowed': !value });
+        break;
+
+    /****************************************************************/
+
     default:
         break;
     }
@@ -420,12 +615,18 @@ const matchBucket = function(url, hostname, bucket, start) {
 µb.changeHiddenSettings = function(hs) {
     const mustReloadResources =
         hs.userResourcesLocation !== this.hiddenSettings.userResourcesLocation;
+    const changedShowAdsDebug = hs.showAdsDebug !== this.hiddenSettings.showAdsDebug; // Adn
     this.hiddenSettings = hs;
     this.saveHiddenSettings();
     if ( mustReloadResources ) {
         redirectEngine.invalidateResourcesSelfie(io);
         this.loadRedirectResources();
     }
+    /* adn */
+    if (changedShowAdsDebug) {
+        adnauseam.verifySetting(ShowAdsDebug, hs.showAdsDebug);
+    }
+    /* end of adn */
     broadcast({ what: 'hiddenSettingsChanged' });
 };
 

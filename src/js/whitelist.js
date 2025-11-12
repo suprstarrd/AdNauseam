@@ -122,11 +122,21 @@ function whitelistChanged() {
 cmEditor.on('changes', whitelistChanged);
 
 /******************************************************************************/
+const buttonUpdateEff = function() {
+     // Only update eff list
+     // var effEntry = $qs(".listEntry[data-listkey='eff']");
+     // effEntry.cl.add('obsolete');
+     // effEntry.cl.remove('cached');
+     setTimeout(function(){
+        messaging.send('dashboard', { what: 'forceUpdateEff' });
+     },200);
+};
 
 async function renderWhitelist() {
     const details = await messaging.send('dashboard', {
         what: 'getWhitelist',
     });
+    qs$('#effListInput').checked = details.dntEnabled; // ADN
 
     const first = reBadHostname === undefined;
     if ( first ) {
@@ -252,7 +262,12 @@ dom.on('#importFilePicker', 'change', handleImportFilePicker);
 dom.on('#exportWhitelistToFile', 'click', exportWhitelistToFile);
 dom.on('#whitelistApply', 'click', ( ) => { applyChanges(); });
 dom.on('#whitelistRevert', 'click', revertChanges);
+dom.on('#buttonUpdateEff', 'click', buttonUpdateEff);
 
 renderWhitelist();
+
+/******************* exports for adn strict-block-list ************************/
+
+export { directiveFromLine, getEditorText, setEditorText, getCloudData, setCloudData, reComment, startImportFilePicker }
 
 /******************************************************************************/
