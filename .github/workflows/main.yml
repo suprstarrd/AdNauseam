@@ -3,6 +3,7 @@ name: AdNauseam release
 on:
   create:
     branches: master
+  workflow_dispatch:
 
 permissions:
   contents: read
