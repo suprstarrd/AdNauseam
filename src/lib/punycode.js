@@ -440,4 +440,9 @@ const punycode = {
 	'toUnicode': toUnicode
 };
 
-module.exports = punycode;
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = punycode;
+} else {
+	window.punycode = punycode;
+}
+export default punycode;
