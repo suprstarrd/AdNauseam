@@ -170,7 +170,7 @@
     "supportURL": "http://www.certyficate.it/adblock-ublock-polish-filters/"
   },
   "https://easylist-downloads.adblockplus.org/antiadblockfilters.txt": {
-    "off": true,
+    "off": false,
     "title": "Adblock Warning Removal List",
     "group": "ads",
     "supportURL": "https://forums.lanik.us/"
